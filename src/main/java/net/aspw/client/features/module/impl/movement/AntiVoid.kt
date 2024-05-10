@@ -35,6 +35,7 @@ class AntiVoid : Module() {
     private val setBackModeValue = ListValue(
         "SetBack-Mode",
         arrayOf(
+            ""
             "Teleport",
             "FlyFlag",
             "IllegalPacket",
@@ -42,9 +43,10 @@ class AntiVoid : Module() {
             "StopMotion",
             "Position",
             "Edit",
-            "SpoofBack"
+            "SpoofBack",
+            "Universal"
         ),
-        "FlyFlag"
+        "Universal"
     )
     private val maxFallDistSimulateValue = IntegerValue("Predict-CheckFallDistance", 255, 0, 255, "m") {
         voidDetectionAlgorithm.get().equals("predict", ignoreCase = true)
@@ -159,6 +161,28 @@ class AntiVoid : Module() {
                                 false
                             )
                         )
+
+                        "universal" -> {
+                            if (!mc.thePlayer.onGround && wasOnGround) {
+                                if (mc.thePlayer.motionY < 0.0 && checkVoid()) {
+                                    enabled = true
+                                    BlinkUtils.setBlinkState(all = true)
+                                    posX = mc.thePlayer.posX
+                                    posY = mc.thePlayer.posY
+                                    posZ = mc.thePlayer.posZ
+                                    flagged = false
+                                }
+                            } else if (mc.thePlayer.onGround && enabled) {
+                                BlinkUtils.setBlinkState(off = true, release = true)
+                                enabled = false
+                                flagged = false
+                            } else if (!mc.thePlayer.onGround && enabled) {
+                                if (mc.thePlayer.fallDistance > maxFallDistValue.get() && !flagged) {
+                                    PacketUtils.sendPacketNoEvent(C03PacketPlayer.C04PacketPlayerPosition(posX, posY + 1, posZ, false))
+                                    flagged = true
+                                }
+                            }
+                        }
 
                         "Edit", "SpoofBack" -> shouldEdit = true
                     }
@@ -311,6 +335,16 @@ class AntiVoid : Module() {
             packetPlayer.z = lastZ
             packetPlayer.isMoving = false
             shouldEdit = false
+        }
+        if (setBackModeValue.get()
+                .equals("universal", ignoreCase = true))
+        {
+            if (enabled && flagged && packet is S08PacketPlayerPosLook) {
+                enabled = false
+                BlinkUtils.setBlinkState(off = true, release = true)
+                mc.thePlayer.setPosition(posX, posY, posZ)
+                MovementUtils.resetMotion(true)
+            }
         }
     }
 
