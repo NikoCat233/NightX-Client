@@ -16,6 +16,7 @@ import net.aspw.client.utils.misc.NewFallingPlayer
 import net.aspw.client.utils.misc.RandomUtils
 import net.aspw.client.utils.pathfinder.MainPathFinder
 import net.aspw.client.utils.pathfinder.Vec3
+import net.aspw.client.utils.BlinkUtils
 import net.aspw.client.value.BoolValue
 import net.aspw.client.value.FloatValue
 import net.aspw.client.value.IntegerValue
@@ -35,7 +36,7 @@ class AntiVoid : Module() {
     private val setBackModeValue = ListValue(
         "SetBack-Mode",
         arrayOf(
-            ""
+            "",
             "Teleport",
             "FlyFlag",
             "IllegalPacket",
@@ -69,8 +70,23 @@ class AntiVoid : Module() {
     private var shouldStopMotion = false
     private var shouldEdit = false
 
+    private  var tried = false
+    private var enabled = false
+    private var flagged = false
+    private var wasOnGround = false
+
+    private var posX = 0.0
+    private var posY = 0.0
+    private var posZ = 0.0
+
     @EventTarget
     fun onUpdate(event: UpdateEvent?) {
+        if (mc.thePlayer.onGround) {
+            tried = false
+            flagged = false
+            wasOnGround = true
+        }
+
         if (Launch.moduleManager.getModule(Flight::class.java)!!.state) return
         detectedLocation = null
         if (voidDetectionAlgorithm.get().equals("collision", ignoreCase = true)) {
@@ -177,7 +193,7 @@ class AntiVoid : Module() {
                                 enabled = false
                                 flagged = false
                             } else if (!mc.thePlayer.onGround && enabled) {
-                                if (mc.thePlayer.fallDistance > maxFallDistValue.get() && !flagged) {
+                                if (mc.thePlayer.fallDistance > setBackFallDistValue.get() && !flagged) {
                                     PacketUtils.sendPacketNoEvent(C03PacketPlayer.C04PacketPlayerPosition(posX, posY + 1, posZ, false))
                                     flagged = true
                                 }
@@ -314,6 +330,10 @@ class AntiVoid : Module() {
                 )
             )
         } else synchronized(positions) { positions.clear() }
+
+        if (!mc.thePlayer.onGround) {
+            wasOnGround = false
+        }
     }
 
     @EventTarget
@@ -339,7 +359,7 @@ class AntiVoid : Module() {
         if (setBackModeValue.get()
                 .equals("universal", ignoreCase = true))
         {
-            if (enabled && flagged && packet is S08PacketPlayerPosLook) {
+            if (enabled && flagged && event.packet is S08PacketPlayerPosLook) {
                 enabled = false
                 BlinkUtils.setBlinkState(off = true, release = true)
                 mc.thePlayer.setPosition(posX, posY, posZ)
@@ -358,6 +378,10 @@ class AntiVoid : Module() {
 
     override fun onDisable() {
         reset()
+
+        if (enabled) {
+            BlinkUtils.setBlinkState(off = true, release = true)
+        }
     }
 
     override fun onEnable() {
@@ -372,6 +396,14 @@ class AntiVoid : Module() {
         lastX = lastY
         shouldRender = false
         shouldStopMotion = false
+
+        enabled = false
+        flagged = false
+
         synchronized(positions) { positions.clear() }
+    }
+
+    private fun checkVoid(): Boolean {
+        return (NewFallingPlayer(mc.thePlayer).findCollision(60) == null)
     }
 }
